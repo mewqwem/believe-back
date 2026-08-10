@@ -162,7 +162,46 @@ export function registerRoomHandlers(io, socket) {
       io.to(player.socketId).emit('HAND_UPDATED', { hand: player.hand }); // ЗМІНА: socketId
     });
   });
+  socket.on('RESTART_GAME', ({ roomId }) => {
+    const room = getRoom(roomId);
+    if (!room) return socket.emit('ERROR', { message: 'Кімната не знайдена' });
+    if (room.status !== 'GAME_OVER') {
+      return socket.emit('ERROR', { message: 'Гру ще не завершено' });
+    }
 
+    const activePlayers = room.players.filter((p) => !p.isDisconnected);
+    if (activePlayers.length < 2) {
+      return socket.emit('ERROR', {
+        message: 'Потрібно щонайменше 2 гравці для нового кола',
+      });
+    }
+
+    const deck = shuffleDeck(generateDeck());
+    const hands = dealCards(deck, activePlayers.length);
+
+    // роздаємо тільки активним гравцям, ті хто відключився — лишаються поза грою
+    room.players = activePlayers;
+    room.players.forEach((player, index) => {
+      player.hand = hands[index];
+    });
+
+    room.tablePile = [];
+    room.discardPile = [];
+    room.claimedRank = null;
+    room.lastMoveCount = 0;
+    room.lastPlayerId = null;
+    room.finishOrder = [];
+    room.currentTurnIndex = 0;
+    room.status = 'PLAYING';
+
+    console.log('Нове коло розпочато в кімнаті', roomId);
+
+    io.to(roomId).emit('GAME_LOG', { message: 'Починається нове коло!' });
+    io.to(roomId).emit('ROOM_UPDATED', toPublicRoom(room));
+    room.players.forEach((player) => {
+      io.to(player.socketId).emit('HAND_UPDATED', { hand: player.hand });
+    });
+  });
   socket.on('disconnect', () => {
     const room = findRoomBySocketId(socket.id);
     if (!room) return;
