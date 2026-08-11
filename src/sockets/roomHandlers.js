@@ -10,9 +10,9 @@ import {
   checkGameOver,
   removePlayerFromGame,
   removePlayerCompletely,
+  RECONNECT_GRACE_MS,
 } from './gameHelpers.js';
 
-const RECONNECT_GRACE_MS = 30000; // 30 секунд на реконект
 const disconnectTimers = new Map(); // playerId -> timeoutId
 
 export function registerRoomHandlers(io, socket) {
@@ -24,6 +24,7 @@ export function registerRoomHandlers(io, socket) {
       name: playerName,
       hand: [],
       isDisconnected: false,
+      disconnectedAt: null,
     });
     socket.join(room.roomId);
     socket.emit('ROOM_CREATED', { roomId: room.roomId, myPlayerId: playerId });
@@ -50,6 +51,7 @@ export function registerRoomHandlers(io, socket) {
       name: playerName,
       hand: [],
       isDisconnected: false,
+      disconnectedAt: null,
     });
     socket.join(roomId);
     socket.emit('JOINED', { myPlayerId: playerId });
@@ -77,6 +79,7 @@ export function registerRoomHandlers(io, socket) {
 
     player.socketId = socket.id; // прив'язуємо нове з'єднання до старої особистості
     player.isDisconnected = false;
+    player.disconnectedAt = null;
     socket.join(roomId);
 
     console.log(`${player.name} повернувся в гру`);
@@ -209,28 +212,22 @@ export function registerRoomHandlers(io, socket) {
     if (!player) return;
 
     player.isDisconnected = true;
+    player.disconnectedAt = Date.now(); // ДОДАНО
+
     io.to(room.roomId).emit('ROOM_UPDATED', toPublicRoom(room));
     io.to(room.roomId).emit('GAME_LOG', {
       message: `${player.name} втратив(-ла) з'єднання, чекаємо повернення...`,
     });
-    console.log(
-      `${player.name} відключився, очікуємо реконект ${RECONNECT_GRACE_MS / 1000}с`,
-    );
 
     const timer = setTimeout(() => {
       disconnectTimers.delete(player.playerId);
-      if (!player.isDisconnected) return; // встиг повернутись раніше через REJOIN_ROOM
+      if (!player.isDisconnected) return; // встиг повернутись
 
-      if (room.status === 'LOBBY') {
-        room.players = room.players.filter(
-          (p) => p.playerId !== player.playerId,
-        );
-      } else {
-        removePlayerFromGame(room, player.playerId);
-      }
+      const removed = removePlayerCompletely(room, player.playerId); // ЗМІНА: тепер завжди повністю видаляємо, не тільки маркуємо
+      if (!removed) return;
 
       io.to(room.roomId).emit('GAME_LOG', {
-        message: `${player.name} остаточно вийшов`,
+        message: `${removed.name} остаточно вийшов`,
       });
       io.to(room.roomId).emit('ROOM_UPDATED', toPublicRoom(room));
 
@@ -240,13 +237,6 @@ export function registerRoomHandlers(io, socket) {
           room.status = 'GAME_OVER';
           io.to(room.roomId).emit('GAME_OVER', gameOverResult);
         }
-      }
-      // If no players remain, delete room
-      if (room.players.length === 0) {
-        deleteRoom(room.roomId);
-        console.log(
-          `Room ${room.roomId} deleted after disconnect (no players left)`,
-        );
       }
     }, RECONNECT_GRACE_MS);
 

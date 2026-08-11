@@ -1,3 +1,5 @@
+export const RECONNECT_GRACE_MS = 30000;
+
 export function suitSymbolServer(suit) {
   return { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' }[suit] || suit;
 }
@@ -11,11 +13,13 @@ export function toPublicRoom(room) {
     lastMoveCount: room.lastMoveCount,
     lastPlayerId: room.lastPlayerId,
     currentTurnIndex: room.currentTurnIndex,
+    reconnectGraceMs: RECONNECT_GRACE_MS,
     players: room.players.map((p) => ({
       id: p.playerId,
       name: p.name,
       cardCount: p.hand.length,
       isDisconnected: p.isDisconnected,
+      disconnectedAt: p.disconnectedAt,
     })),
   };
 }
