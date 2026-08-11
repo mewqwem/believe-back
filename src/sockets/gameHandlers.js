@@ -86,7 +86,8 @@ export function registerGameHandlers(io, socket) {
     const lastPlayer = room.players.find(
       (p) => p.playerId === room.lastPlayerId,
     );
-    const isHonest = room.tablePile.every((c) => c.rank === room.claimedRank);
+    const lastPlayedCards = room.tablePile.slice(-room.lastMoveCount);
+    const isHonest = lastPlayedCards.every((c) => c.rank === room.claimedRank);
 
     let receiver = null;
     let nextIndex;
@@ -117,19 +118,19 @@ export function registerGameHandlers(io, socket) {
       return socket.emit('ERROR', { message: 'Невідома дія' });
     }
 
-    const revealedRanks = room.tablePile
+    const lastPlayedRanks = lastPlayedCards
       .map((c) => `${c.rank}${suitSymbolServer(c.suit)}`)
       .join(', ');
     let logMessage;
 
     if (action === 'BELIEVE' && isHonest) {
-      logMessage = `${respondingPlayer.name} повірив(-ла) — і це була правда! На столі: ${revealedRanks}. Карти пішли у відбій.`;
+      logMessage = `${respondingPlayer.name} повірив(-ла) — і останній докид був чесний! (${lastPlayedRanks}). Усі карти зі столу пішли у відбій.`;
     } else if (action === 'BELIEVE' && !isHonest) {
-      logMessage = `${respondingPlayer.name} повірив(-ла), але це був блеф! На столі: ${revealedRanks}. ${respondingPlayer.name} забирає ${room.tablePile.length} карт(и).`;
+      logMessage = `${respondingPlayer.name} повірив(-ла), але останній докид був блефом! (${lastPlayedRanks}). ${respondingPlayer.name} забирає всі ${room.tablePile.length} карт(и) зі столу.`;
     } else if (action === 'DOUBT' && !isHonest) {
-      logMessage = `${respondingPlayer.name} не повірив(-ла) — і мав(-ла) рацію, це був блеф! На столі: ${revealedRanks}. ${lastPlayer.name} забирає карти назад.`;
+      logMessage = `${respondingPlayer.name} не повірив(-ла) — і мав(-ла) рацію, останній докид був блефом! (${lastPlayedRanks}). ${lastPlayer.name} забирає всі карти зі столу назад.`;
     } else {
-      logMessage = `${respondingPlayer.name} не повірив(-ла), але це була правда! На столі: ${revealedRanks}. ${respondingPlayer.name} забирає ${room.tablePile.length} карт(и).`;
+      logMessage = `${respondingPlayer.name} не повірив(-ла), але останній докид був чесним! (${lastPlayedRanks}). ${respondingPlayer.name} забирає всі ${room.tablePile.length} карт(и) зі столу.`;
     }
 
     if (receiver) {
