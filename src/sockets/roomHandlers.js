@@ -6,6 +6,7 @@ import {
 } from './rooms.js';
 import { generateDeck, shuffleDeck, dealCards } from './cards.js';
 import {
+  shuffleArray,
   toPublicRoom,
   checkGameOver,
   removePlayerFromGame,
@@ -179,11 +180,12 @@ export function registerRoomHandlers(io, socket) {
       });
     }
 
+    room.players = shuffleArray(activePlayers);
+
     const deck = shuffleDeck(generateDeck());
     const hands = dealCards(deck, activePlayers.length);
 
     // роздаємо тільки активним гравцям, ті хто відключився — лишаються поза грою
-    room.players = activePlayers;
     room.players.forEach((player, index) => {
       player.hand = hands[index];
     });
@@ -197,9 +199,16 @@ export function registerRoomHandlers(io, socket) {
     room.currentTurnIndex = 0;
     room.status = 'PLAYING';
 
-    console.log('Нове коло розпочато в кімнаті', roomId);
+    console.log(
+      'Нове коло розпочато в кімнаті',
+      roomId,
+      '— новий порядок:',
+      room.players.map((player) => player.name),
+    );
 
-    io.to(roomId).emit('GAME_LOG', { message: 'Починається нове коло!' });
+    io.to(roomId).emit('GAME_LOG', {
+      message: 'Починається нове коло! Гравці помінялись місцями.',
+    });
     io.to(roomId).emit('ROOM_UPDATED', toPublicRoom(room));
     room.players.forEach((player) => {
       io.to(player.socketId).emit('HAND_UPDATED', { hand: player.hand });

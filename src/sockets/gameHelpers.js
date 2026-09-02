@@ -1,5 +1,22 @@
 export const RECONNECT_GRACE_MS = 30000;
 
+export function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+export function findFourOfAKind(hand, cardIds) {
+  if (cardIds.length !== 4) return null;
+  const cards = hand.filter((card) => cardIds.includes(card.id));
+  if (cards.length !== 4) return null;
+  const allSameRank = cards.every((card) => card.rank === cards[0].rank);
+  return allSameRank ? cards : null;
+}
+
 export function suitSymbolServer(suit) {
   return { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' }[suit] || suit;
 }
@@ -14,6 +31,7 @@ export function toPublicRoom(room) {
     lastPlayerId: room.lastPlayerId,
     currentTurnIndex: room.currentTurnIndex,
     reconnectGraceMs: RECONNECT_GRACE_MS,
+    finishOrder: room.finishOrder,
     players: room.players.map((p) => ({
       id: p.playerId,
       name: p.name,
@@ -28,28 +46,32 @@ export function nextActiveIndexFrom(room, startIndex) {
   const n = room.players.length;
   for (let offset = 0; offset < n; offset++) {
     const idx = (startIndex + offset) % n;
-    if (room.players[idx].hand.length > 0) return idx;
+    if (!room.finishOrder.includes(room.players[idx].playerId)) return idx;
   }
   return startIndex;
 }
 
 export function checkGameOver(room) {
   const activePlayers = room.players.filter((p) => !p.isDisconnected);
-  if (activePlayers.length < 2) return { reason: 'NOT_ENOUGH_PLAYERS' };
+  const unfinishedPlayers = activePlayers.filter(
+    (p) => !room.finishOrder.includes(p.playerId),
+  );
 
-  const withCards = activePlayers.filter((p) => p.hand.length > 0);
-  if (withCards.length === 1) {
-    const loser = withCards[0];
-    if (!room.finishOrder.includes(loser.playerId)) {
-      room.finishOrder.push(loser.playerId); // програвший — завжди останній у списку
-    }
-    return {
-      reason: 'LOSER',
-      loserId: loser.playerId,
-      finishOrder: room.finishOrder,
-    };
+  if (unfinishedPlayers.some((p) => p.hand.length === 0)) return null;
+  if (unfinishedPlayers.length === 0) {
+    return { reason: 'NOT_ENOUGH_PLAYERS' };
   }
-  return null;
+  if (unfinishedPlayers.length > 1) return null;
+
+  const loser = unfinishedPlayers[0];
+  if (!room.finishOrder.includes(loser.playerId)) {
+    room.finishOrder.push(loser.playerId); // програвший — завжди останній у списку
+  }
+  return {
+    reason: 'LOSER',
+    loserId: loser.playerId,
+    finishOrder: room.finishOrder,
+  };
 }
 
 export function checkPlayerFinished(room, player) {
@@ -58,7 +80,7 @@ export function checkPlayerFinished(room, player) {
 
   room.finishOrder.push(player.playerId);
   const place = room.finishOrder.length;
-  return `${player.name} позбувся(-лась) усіх карт і виходить з гри! (${place} місце)`;
+  return `${player.name} завершив(-ла) гру та посів(-ла) ${place} місце!`;
 }
 
 export function giveCards(room, player, cards) {

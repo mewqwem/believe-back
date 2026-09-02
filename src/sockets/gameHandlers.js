@@ -7,6 +7,7 @@ import {
   checkGameOver,
   giveCards,
   checkPlayerFinished,
+  findFourOfAKind,
 } from './gameHelpers.js';
 
 export function registerGameHandlers(io, socket) {
@@ -45,8 +46,6 @@ export function registerGameHandlers(io, socket) {
 
     player.hand = player.hand.filter((c) => !cardIds.includes(c.id));
 
-    const finishMessage = checkPlayerFinished(room, player); // НОВЕ — саме тут, після спорожнення руки
-
     room.tablePile.push(...cardsToPlay);
     room.lastMoveCount = cardsToPlay.length;
     room.lastPlayerId = player.playerId;
@@ -60,11 +59,56 @@ export function registerGameHandlers(io, socket) {
       : `${player.name} докидає ще ${cardsToPlay.length} карт(и)`;
 
     io.to(roomId).emit('GAME_LOG', { message: logMessage });
+    io.to(roomId).emit('ROOM_UPDATED', toPublicRoom(room));
+    io.to(player.socketId).emit('HAND_UPDATED', { hand: player.hand });
+  });
+
+  socket.on('DISCARD_SET', ({ roomId, cardIds }) => {
+    const room = getRoom(roomId);
+    if (!room) return socket.emit('ERROR', { message: 'Кімната не знайдена' });
+    if (room.status !== 'PLAYING')
+      return socket.emit('ERROR', { message: 'Гра ще не почалась' });
+
+    const playerIndex = room.players.findIndex((p) => p.socketId === socket.id);
+    if (playerIndex !== room.currentTurnIndex) {
+      return socket.emit('ERROR', { message: 'Зараз не твій хід' });
+    }
+    if (room.tablePile.length > 0) {
+      return socket.emit('ERROR', {
+        message: 'Не можна скидати сет, поки стіл не порожній',
+      });
+    }
+
+    const player = room.players[playerIndex];
+    const setCards = findFourOfAKind(player.hand, cardIds);
+    if (!setCards) {
+      return socket.emit('ERROR', {
+        message: 'Потрібно вибрати рівно 4 карти одного рангу',
+      });
+    }
+
+    player.hand = player.hand.filter((card) => !cardIds.includes(card.id));
+    room.discardPile.push(...setCards);
+
+    const finishMessage = checkPlayerFinished(room, player);
     if (finishMessage) {
-      io.to(roomId).emit('GAME_LOG', { message: finishMessage }); // НОВЕ
+      room.currentTurnIndex = nextActiveIndexFrom(room, playerIndex + 1);
+    }
+
+    io.to(roomId).emit('GAME_LOG', {
+      message: `${player.name} скидає сет із 4 карт рангу «${setCards[0].rank}» у відбій${finishMessage ? ' і завершує гру' : ' і ходить ще раз'}`,
+    });
+    if (finishMessage) {
+      io.to(roomId).emit('GAME_LOG', { message: finishMessage });
     }
     io.to(roomId).emit('ROOM_UPDATED', toPublicRoom(room));
     io.to(player.socketId).emit('HAND_UPDATED', { hand: player.hand });
+
+    const gameOverResult = checkGameOver(room);
+    if (gameOverResult) {
+      room.status = 'GAME_OVER';
+      io.to(roomId).emit('GAME_OVER', gameOverResult);
+    }
   });
 
   socket.on('RESPOND', ({ roomId, action }) => {
@@ -143,9 +187,20 @@ export function registerGameHandlers(io, socket) {
     room.claimedRank = null;
     room.lastMoveCount = 0;
     room.lastPlayerId = null;
-    room.currentTurnIndex = nextIndex;
+
+    const finishMessages = [];
+    for (const player of [lastPlayer, respondingPlayer]) {
+      if (player?.hand.length === 0) {
+        const finishMessage = checkPlayerFinished(room, player);
+        if (finishMessage) finishMessages.push(finishMessage);
+      }
+    }
+    room.currentTurnIndex = nextActiveIndexFrom(room, nextIndex);
 
     io.to(roomId).emit('GAME_LOG', { message: logMessage });
+    for (const finishMessage of finishMessages) {
+      io.to(roomId).emit('GAME_LOG', { message: finishMessage });
+    }
     io.to(roomId).emit('ROOM_UPDATED', toPublicRoom(room));
     if (receiver)
       io.to(receiver.socketId).emit('HAND_UPDATED', { hand: receiver.hand });
