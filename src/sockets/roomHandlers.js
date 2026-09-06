@@ -1,3 +1,4 @@
+import { validateProfile } from '../auth/profile.js';
 import {
   createRoom,
   getRoom,
@@ -17,12 +18,13 @@ import {
 const disconnectTimers = new Map(); // playerId -> timeoutId
 
 export function registerRoomHandlers(io, socket) {
-  socket.on('CREATE_ROOM', ({ playerName, playerId }) => {
+  socket.on('CREATE_ROOM', ({ playerName, playerId, avatar = null }) => {
     const room = createRoom();
     room.players.push({
       playerId,
       socketId: socket.id,
       name: playerName,
+      avatar: validateProfile({ name: 'Player', avatar })?.avatar ?? null,
       hand: [],
       isDisconnected: false,
       disconnectedAt: null,
@@ -32,7 +34,7 @@ export function registerRoomHandlers(io, socket) {
     io.to(room.roomId).emit('ROOM_UPDATED', toPublicRoom(room));
   });
 
-  socket.on('JOIN_ROOM', ({ roomId, playerName, playerId }) => {
+  socket.on('JOIN_ROOM', ({ roomId, playerName, playerId, avatar = null }) => {
     const room = getRoom(roomId);
     if (!room) return socket.emit('ERROR', { message: 'Кімната не знайдена' });
     if (room.status !== 'LOBBY')
@@ -50,6 +52,7 @@ export function registerRoomHandlers(io, socket) {
       playerId,
       socketId: socket.id,
       name: playerName,
+      avatar: validateProfile({ name: 'Player', avatar })?.avatar ?? null,
       hand: [],
       isDisconnected: false,
       disconnectedAt: null,
@@ -123,6 +126,7 @@ export function registerRoomHandlers(io, socket) {
       message: `${player.name} вийшов(-ла) з кімнати`,
     });
     socket.broadcast.to(room.roomId).emit('ROOM_UPDATED', toPublicRoom(room));
+    socket.leave(room.roomId);
 
     if (room.status !== 'LOBBY') {
       const gameOverResult = checkGameOver(room);

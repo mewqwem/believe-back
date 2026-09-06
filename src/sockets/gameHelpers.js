@@ -35,6 +35,7 @@ export function toPublicRoom(room) {
     players: room.players.map((p) => ({
       id: p.playerId,
       name: p.name,
+      avatar: p.avatar ?? null,
       cardCount: p.hand.length,
       isDisconnected: p.isDisconnected,
       disconnectedAt: p.disconnectedAt,

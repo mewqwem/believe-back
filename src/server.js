@@ -9,13 +9,16 @@ import { logger } from './middleware/logger.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { registerSocketHandlers } from './sockets/index.js';
+import { authRouter, initializeAuth } from './auth/router.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(logger);
-app.use(express.json());
+app.use('/auth/profile', express.json({ limit: '96kb' }));
+app.use(express.json({ limit: '16kb' }));
 app.use(cors());
+app.use('/auth', authRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
@@ -50,8 +53,13 @@ const bootstrap = async () => {
 
   // Connect to MongoDB in background; don't block server startup
   connectMongoDB()
+    .then(initializeAuth)
     .then(() => console.log('✅ MongoDB connected'))
-    .catch((err) => console.error('❌ MongoDB connection error:', err));
+    .catch(() =>
+      console.error(
+        '❌ MongoDB unavailable. Check database credentials and Atlas network access. Guest games remain available.',
+      ),
+    );
 };
 
 bootstrap();
