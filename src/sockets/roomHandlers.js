@@ -18,8 +18,9 @@ import {
 const disconnectTimers = new Map(); // playerId -> timeoutId
 
 export function registerRoomHandlers(io, socket) {
-  socket.on('CREATE_ROOM', ({ playerName, playerId, avatar = null }) => {
-    const room = createRoom();
+  socket.on('CREATE_ROOM', (payload) => {
+    const { playerName, playerId, avatar = null, maxPlayers } = payload ?? {};
+    const room = createRoom({ maxPlayers });
     room.players.push({
       playerId,
       socketId: socket.id,
@@ -34,17 +35,60 @@ export function registerRoomHandlers(io, socket) {
     io.to(room.roomId).emit('ROOM_UPDATED', toPublicRoom(room));
   });
 
-  socket.on('JOIN_ROOM', ({ roomId, playerName, playerId, avatar = null }) => {
-    const room = getRoom(roomId);
-    if (!room) return socket.emit('ERROR', { message: 'Кімната не знайдена' });
-    if (room.status !== 'LOBBY')
-      return socket.emit('ERROR', { message: 'Гра вже почалась' });
-
-    const alreadyInRoom = room.players.some((p) => p.playerId === playerId);
-    if (alreadyInRoom) {
+  socket.on('JOIN_ROOM', (payload) => {
+    const { roomId, playerName, playerId, avatar = null } = payload ?? {};
+    if (!roomId || typeof roomId !== 'string' || !playerId || typeof playerId !== 'string') {
       return socket.emit('ERROR', {
-        message:
-          'Цей гравець уже в кімнаті (можливо, відкрито в іншій вкладці)',
+        code: 'INVALID_PAYLOAD',
+        message: 'Некоректні дані запиту',
+      });
+    }
+
+    const room = getRoom(roomId);
+    if (!room) {
+      return socket.emit('ERROR', {
+        code: 'ROOM_NOT_FOUND',
+        message: 'Кімната не знайдена',
+      });
+    }
+
+    const existingPlayer = room.players.find((p) => p.playerId === playerId);
+    if (existingPlayer) {
+      if (existingPlayer.isDisconnected) {
+        const timer = disconnectTimers.get(playerId);
+        if (timer) {
+          clearTimeout(timer);
+          disconnectTimers.delete(playerId);
+        }
+        existingPlayer.socketId = socket.id;
+        existingPlayer.isDisconnected = false;
+        existingPlayer.disconnectedAt = null;
+        socket.join(roomId);
+        socket.emit('JOINED', { myPlayerId: playerId });
+        socket.emit('HAND_UPDATED', { hand: existingPlayer.hand });
+        io.to(roomId).emit('ROOM_UPDATED', toPublicRoom(room));
+        io.to(roomId).emit('GAME_LOG', {
+          message: `${existingPlayer.name} повернувся в гру`,
+        });
+        return;
+      }
+      return socket.emit('ERROR', {
+        code: 'PLAYER_ALREADY_IN_ROOM',
+        message: 'Цей гравець уже в кімнаті (можливо, відкрито в іншій вкладці)',
+      });
+    }
+
+    if (room.status !== 'LOBBY') {
+      return socket.emit('ERROR', {
+        code: 'GAME_ALREADY_STARTED',
+        message: 'Гра вже почалась',
+      });
+    }
+
+    if (room.players.length >= room.maxPlayers) {
+      return socket.emit('ERROR', {
+        code: 'ROOM_FULL',
+        message: 'lobby.roomFull',
       });
     }
 
@@ -62,16 +106,19 @@ export function registerRoomHandlers(io, socket) {
     io.to(roomId).emit('ROOM_UPDATED', toPublicRoom(room));
   });
 
-  socket.on('REJOIN_ROOM', ({ roomId, playerId }) => {
+  socket.on('REJOIN_ROOM', (payload) => {
+    const { roomId, playerId } = payload ?? {};
     const room = getRoom(roomId);
     if (!room)
       return socket.emit('ERROR', {
+        code: 'ROOM_NOT_FOUND',
         message: 'Кімната не знайдена, схоже гру вже завершено',
       });
 
     const player = room.players.find((p) => p.playerId === playerId);
     if (!player)
       return socket.emit('ERROR', {
+        code: 'PLAYER_NOT_FOUND',
         message: 'Тебе не знайдено в цій кімнаті',
       });
 

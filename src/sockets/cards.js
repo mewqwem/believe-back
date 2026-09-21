@@ -34,10 +34,30 @@ export function shuffleDeck(deck) {
   return shuffled;
 }
 
-export function dealCards(deck, playerCount) {
+export function dealCards(deck, playerCount, randomFn = Math.random) {
+  if (playerCount <= 0) return [];
   const hands = Array.from({ length: playerCount }, () => []);
-  deck.forEach((card, index) => {
-    hands[index % playerCount].push(card);
-  });
+  const baseCards = Math.floor(deck.length / playerCount);
+  const remainder = deck.length % playerCount;
+
+  let cardIndex = 0;
+  for (let p = 0; p < playerCount; p++) {
+    for (let c = 0; c < baseCards; c++) {
+      hands[p].push(deck[cardIndex++]);
+    }
+  }
+
+  if (remainder > 0) {
+    const playerIndices = Array.from({ length: playerCount }, (_, i) => i);
+    for (let i = playerIndices.length - 1; i > 0; i--) {
+      const j = Math.floor(randomFn() * (i + 1));
+      [playerIndices[i], playerIndices[j]] = [playerIndices[j], playerIndices[i]];
+    }
+    const luckyPlayers = playerIndices.slice(0, remainder);
+    for (const playerIdx of luckyPlayers) {
+      hands[playerIdx].push(deck[cardIndex++]);
+    }
+  }
+
   return hands;
 }

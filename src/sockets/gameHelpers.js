@@ -1,3 +1,5 @@
+import { DEFAULT_MAX_PLAYERS } from './rooms.js';
+
 export const RECONNECT_GRACE_MS = 30000;
 
 export function shuffleArray(array) {
@@ -24,6 +26,7 @@ export function suitSymbolServer(suit) {
 export function toPublicRoom(room) {
   return {
     roomId: room.roomId,
+    maxPlayers: room.maxPlayers ?? DEFAULT_MAX_PLAYERS,
     status: room.status,
     claimedRank: room.claimedRank,
     tablePileCount: room.tablePile.length,

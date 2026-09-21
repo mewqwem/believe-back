@@ -5,10 +5,25 @@ function generateRoomCode() {
   return rooms.has(code) ? generateRoomCode() : code;
 }
 
-export function createRoom() {
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 10;
+export const DEFAULT_MAX_PLAYERS = 4;
+
+export function normalizeMaxPlayers(value) {
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    return DEFAULT_MAX_PLAYERS;
+  }
+  if (value < MIN_PLAYERS || value > MAX_PLAYERS) {
+    return DEFAULT_MAX_PLAYERS;
+  }
+  return value;
+}
+
+export function createRoom({ maxPlayers = DEFAULT_MAX_PLAYERS } = {}) {
   const roomId = generateRoomCode();
   const room = {
     roomId,
+    maxPlayers: normalizeMaxPlayers(maxPlayers),
     players: [],
     tablePile: [],
     discardPile: [],
