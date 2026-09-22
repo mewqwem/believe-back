@@ -13,6 +13,7 @@ export const RANKS = [
   'K',
   'A',
 ];
+export const CLAIMABLE_RANKS = RANKS.filter((rank) => rank !== 'A');
 const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'];
 
 export function generateDeck() {

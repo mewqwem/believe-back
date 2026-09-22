@@ -1,5 +1,5 @@
 import { getRoom } from './rooms.js';
-import { RANKS } from './cards.js';
+import { CLAIMABLE_RANKS } from './cards.js';
 import {
   toPublicRoom,
   suitSymbolServer,
@@ -38,7 +38,7 @@ export function registerGameHandlers(io, socket) {
     const isNewClaim = room.tablePile.length === 0;
 
     if (isNewClaim) {
-      if (!RANKS.includes(claimedRank)) {
+      if (!CLAIMABLE_RANKS.includes(claimedRank)) {
         return socket.emit('ERROR', { message: 'Некоректний заявлений ранг' });
       }
       room.claimedRank = claimedRank;
